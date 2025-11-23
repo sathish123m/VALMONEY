@@ -1,0 +1,13 @@
+# Dependencies (Too heavy for Git)
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Secrets (Security Risk - Never upload these)
+.env
+.env.local
+.DS_Store
+
+# Build Outputs
+dist/
+build/
