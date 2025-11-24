@@ -1,4 +1,4 @@
-# VELOX (formerly FinTrack)
+# VALMONEY
 
 ### The Enterprise-Grade Debt Payoff Engine.
 
@@ -6,7 +6,7 @@
 ![Stack](https://img.shields.io/badge/stack-MERN-green.svg)
 ![Status](https://img.shields.io/badge/status-Production-orange.svg)
 
-**Velox** is a high-fidelity financial dashboard designed to eliminate debt using advanced algorithmic strategies (Avalanche vs. Snowball). Built with a "Lux-Fintech" aesthetic, it features real-time analytics, secure JWT authentication, and a persistent MongoDB architecture.
+**Valmoney** is a high-fidelity financial dashboard designed to eliminate debt using advanced algorithmic strategies (Avalanche vs. Snowball). Built with a "Lux-Fintech" aesthetic, it features real-time analytics, secure JWT authentication, and a persistent MongoDB architecture.
 
 ---
 
