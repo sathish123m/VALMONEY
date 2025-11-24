@@ -39,6 +39,7 @@ echo "Terminal 2 (Client): cd client && npm run dev"
 
 
 🏗 Architecture
+
 The application utilizes a decoupled Client-Server architecture:
 
 Frontend: React.js (Vite), Tailwind CSS, Framer Motion, Recharts.
@@ -50,6 +51,7 @@ Database: MongoDB (Mongoose ODM).
 Security: BCrypt hashing, JWT (JSON Web Tokens), HttpOnly Cookies.
 
 🚀 Key Features
+
 Algorithmic Engine: Toggles between Avalanche (Highest Interest) and Snowball (Lowest Balance) strategies to calculate exact payoff dates and interest saved.
 
 Secure Identity: Full authentication flow with password hashing and session management.
@@ -66,7 +68,8 @@ To run this project, you will need to add the following environment variables to
 MONGO_URI - Your MongoDB connection string. JWT_SECRET - A secret key for signing tokens. PORT - (Optional) Defaults to 5001.
 
 📂 Project Structure
-Velox/
+
+Valmoney/
 ├── client/             # React Frontend
 │   ├── src/
 │   │   ├── components/ # Reusable UI Cards, Sidebar
@@ -79,7 +82,9 @@ Velox/
 │   ├── controllers/    # Business Logic & Algorithms
 │   └── ...
 └── ...
+
 🤝 Contributing
+
 Contributions are always welcome!
 
 Fork the repository.
