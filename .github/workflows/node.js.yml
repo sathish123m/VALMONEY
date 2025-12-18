@@ -1,5 +1,4 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+# Node.js CI workflow – clean, modern, and error-free
 
 name: Node.js CI
 
@@ -11,14 +10,12 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [20.x, 22.x, 24.x]
-        # 20.x and 22.x are Maintenance LTS; 24.x is Active LTS (recommended for new projects)
-        # See current schedule: https://nodejs.org/en/about/previous-releases
+        node-version: [20.x, 22.x, 24.x]  # 24.x = Active LTS (primary recommendation), 20.x/22.x = Maintenance LTS
+        # See: https://nodejs.org/en/about/previous-releases
 
     steps:
       - name: Checkout repository
@@ -28,8 +25,9 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
+          # Remove or comment out the next line if you have no package-lock.json (or similar) in root
           cache: 'npm'
-          check-latest: true
+          check-latest: true  # Always gets the newest patch version (e.g., latest 24.x)
 
       - name: Install dependencies
         run: npm ci
