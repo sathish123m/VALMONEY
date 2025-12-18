@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           # Remove or comment out the next line if you have no package-lock.json (or similar) in root
-          cache: 'npm'
+          # cache: 'npm'
           check-latest: true  # Always gets the newest patch version (e.g., latest 24.x)
 
       - name: Install dependencies
