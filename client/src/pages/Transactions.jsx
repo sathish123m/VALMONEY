@@ -20,9 +20,12 @@ const Transactions = () => {
         const token = localStorage.getItem("auth-token");
         if (!token) return;
 
-        const res = await axios.get("http://localhost:5001/api/transactions", {
-          headers: { "auth-token": token },
-        });
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/transactions`,
+          {
+            headers: { "auth-token": token },
+          }
+        );
 
         // Map DB format to UI format if needed
         const formattedData = res.data.map((t) => ({
@@ -81,7 +84,7 @@ const Transactions = () => {
 
       // Send to Server
       const res = await axios.post(
-        "http://localhost:5001/api/transactions/add",
+        `${import.meta.env.VITE_API_URL}/api/transactions/add`,
         body,
         config
       );
