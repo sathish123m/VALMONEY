@@ -33,6 +33,10 @@ mongoose
 app.use("/api/user", authRoute);
 app.use("/api/debts", debtRoute);
 app.use("/api/transactions", transactionRoute); // <--- FIXED: Added 's' to match Frontend
+app.get("/", (req, res) => {
+  res.status(200).send("ValMoney Backend is running 🚀");
+});
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server Up and Running on port ${PORT}`));
