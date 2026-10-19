@@ -329,6 +329,20 @@ Receipts are written to `UPLOAD_DIR`; on Render attach a persistent disk and poi
 Any Postgres works: create the database, run `npm run db:deploy`, and the schema is in
 `server/prisma/migrations/`.
 
+### Free-hosting caveats
+
+The blueprint deploys both resources on Render's **Free** plan, which needs no payment
+method but comes with limits worth knowing before you demo the app
+([Render's list](https://render.com/docs/free)):
+
+| Limit | What it means here |
+| --- | --- |
+| Spins down after 15 minutes idle, ~1 minute to wake | The web client warms the API as the sign-in page loads and, if a request still lands during a cold start, says the API is starting up rather than hanging. |
+| Outbound SMTP (ports 25/465/587) is blocked | Leave `MAIL_*` unset: verification and reset codes are written to the service logs as `[mail:dev] … code=123456`. The flows still work end to end. |
+| Free Postgres expires 30 days after creation | For a database with no expiry, create a free [Neon](https://neon.com) project and put its connection string in `DATABASE_URL`. |
+| Ephemeral filesystem | Uploaded receipts are lost when the service restarts. Attach the disk in `server/render.yaml` on a paid instance to keep them. |
+| 750 free instance hours per month | A service that never sleeps would use roughly all of them, so avoid uptime keep-alive pings. |
+
 ## Security notes
 
 - Passwords are bcrypt-hashed (10 rounds) and never returned by any endpoint.

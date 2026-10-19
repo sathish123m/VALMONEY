@@ -1,9 +1,23 @@
 # Render blueprint — deploy the API and its database together.
 #
 #   1. Push this repository to GitHub.
-#   2. Render dashboard → New → Blueprint → pick this repository.
-#   3. Fill in the values marked `sync: false` (SMTP credentials) and, if your
-#      account has no free Postgres tier left, raise the database `plan`.
+#   2. Render dashboard → New → Blueprint → pick this repository and set
+#      "Blueprint Path" to `server/render.yaml` (Render defaults to a
+#      render.yaml at the repository root).
+#   3. Apply. Both resources below are on the *Free* compute plan, so no
+#      payment method is required.
+#
+# Free-instance trade-offs (see https://render.com/docs/free):
+#   • the API spins down after 15 minutes idle and takes about a minute to
+#     wake on the next request — the web client says so instead of hanging;
+#   • outbound SMTP (ports 25/465/587) is blocked, so leave the MAIL_* values
+#     unset and password-reset codes are printed to the service logs instead;
+#   • the Free Postgres expires 30 days after creation unless the plan is
+#     raised. For a database that does not expire, create a free one at
+#     https://neon.com and set DATABASE_URL manually instead of the
+#     `fromDatabase` entry below;
+#   • the filesystem is ephemeral, so uploaded receipts are lost on redeploy.
+#     Attach the disk at the bottom of this file on a paid instance to keep them.
 #
 # Deploying elsewhere (Railway, Fly, a VPS) needs the same three things:
 # the build command, the start command and the environment variables below.
@@ -12,7 +26,7 @@ databases:
     databaseName: valmoney
     user: valmoney
     region: oregon
-    postgresMajorVersion: "16"
+    plan: free
 
 services:
   - type: web
@@ -22,6 +36,7 @@ services:
     # VITE_API_URL if the name is taken.
     name: valmoney-backend
     runtime: node
+    plan: free
     region: oregon
     rootDir: server
     # `npm ci` also runs `prisma generate` through postinstall.
@@ -31,6 +46,11 @@ services:
     startCommand: npm run db:deploy && npm start
     healthCheckPath: /api/health
     autoDeploy: true
+    # Rebuild only when the API changes — pushes that touch the client alone do
+    # not need a new Node deploy.
+    buildFilter:
+      paths:
+        - server/**
     envVars:
       - key: NODE_ENV
         value: production
@@ -47,29 +67,15 @@ services:
       # the API — the Vercel production domain plus any preview domains.
       - key: CLIENT_ORIGIN
         value: https://valmoney.vercel.app
-      # Receipt uploads. Persistent disks need a paid instance and are omitted
-      # here so a free-tier blueprint deploys cleanly — on the free plan,
-      # uploaded receipts disappear on redeploy. With a paid instance, uncomment
-      # the `disk:` block at the bottom of this file and point UPLOAD_DIR at its
-      # mount path (e.g. /var/valmoney/uploads).
-      - key: UPLOAD_DIR
-        value: /var/valmoney/uploads
+      # Receipts are written to ./uploads inside the deploy directory. A paid
+      # instance with the disk below (and UPLOAD_DIR pointed at it) keeps them
+      # across deploys; on Free they are lost when the service restarts.
       - key: MAX_UPLOAD_MB
         value: "10"
-      # SMTP is optional: leave MAIL_FROM empty and the API logs emails instead
-      # of sending them. Fill these in to deliver verification and reset codes.
-      - key: MAIL_HOST
-        sync: false
-      - key: MAIL_PORT
-        value: "587"
-      - key: MAIL_SECURE
-        value: "false"
-      - key: MAIL_USER
-        sync: false
-      - key: MAIL_PASS
-        sync: false
-      - key: MAIL_FROM
-        sync: false
+      # Email is optional. Free instances cannot open an SMTP connection, so
+      # these stay unset and every code is written to the service logs as
+      # `[mail:dev] … code=123456`. Add them on a paid instance to send mail:
+      # MAIL_HOST / MAIL_USER / MAIL_PASS / MAIL_FROM (+ MAIL_PORT=587).
     # Persistent disk — requires a paid instance type on Render.
     # disk:
     #   name: valmoney-uploads

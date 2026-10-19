@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CalendarClock, LineChart, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { Logo } from '../../components/layout/Sidebar';
 import { IconButton } from '../../components/ui/Button';
+import { api } from '../../lib/api';
 import { cn } from '../../lib/cn';
 
 const HIGHLIGHTS = [
@@ -14,6 +16,13 @@ const HIGHLIGHTS = [
 /** Split-screen shell shared by sign in, sign up and password recovery. */
 export function AuthLayout({ title, description, children, footer }) {
   const { isDark, toggleTheme } = useTheme();
+
+  // Free hosting sleeps when idle. Waking the API while the user reads this
+  // page means signing in is usually instant instead of waiting out a cold
+  // start. Best effort only — a failure here changes nothing.
+  useEffect(() => {
+    api.get('/api/health').catch(() => null);
+  }, []);
 
   return (
     <div className="relative grid min-h-dvh bg-app lg:grid-cols-[1.05fr_1fr]">

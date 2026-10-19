@@ -42,12 +42,24 @@ export function configureApi({ tokenProvider, unauthorizedHandler } = {}) {
  * How long to wait before giving up on a request.
  *
  * A dead host does not refuse a connection — it accepts it and never answers —
- * which without a deadline leaves the UI spinning forever. The values are
- * generous on purpose: a hosted free-tier API can take the best part of a
- * minute to wake from sleep, and an upload has to fit down a phone connection.
+ * which without a deadline leaves the UI spinning forever. The value is
+ * generous because an upload has to fit down a phone connection.
  */
 const REQUEST_TIMEOUT_MS = 45_000;
 const UPLOAD_TIMEOUT_MS = 90_000;
+
+/**
+ * A sleeping host (Render's free plan spins services down after 15 minutes
+ * idle) answers the first request with a loading page or a 502/503 rather than
+ * JSON. Neither should surface as "request failed" or, worse, be handed to the
+ * caller as if it were data.
+ */
+const WAKING_MESSAGE =
+  'The API is still starting up — free hosting sleeps when idle and takes about a minute to wake. Please try again shortly.';
+
+function looksLikeHtml(value) {
+  return typeof value === 'string' && /^\s*<(?:!doctype|html)/i.test(value);
+}
 
 /**
  * Combine an optional caller signal with our own deadline. `AbortSignal.any`
@@ -125,15 +137,25 @@ async function request(
   if (!response.ok) {
     if (response.status === 401) onUnauthorized();
 
+    if (!isJson && (looksLikeHtml(payload) || response.status === 502 || response.status === 503)) {
+      throw new ApiError(WAKING_MESSAGE, { status: response.status });
+    }
+
     const message =
       (isJson && (payload?.error || payload?.message)) ||
-      (typeof payload === 'string' && payload) ||
+      (typeof payload === 'string' && !looksLikeHtml(payload) && payload.trim().slice(0, 300)) ||
       `Request failed with status ${response.status}`;
 
     throw new ApiError(message, {
       status: response.status,
       details: isJson ? payload?.details ?? null : null,
     });
+  }
+
+  // A 2xx that is not JSON means we were handed a proxy's holding page, not the
+  // API's answer. Returning it would make every caller fail in a confusing way.
+  if (!isJson && looksLikeHtml(payload)) {
+    throw new ApiError(WAKING_MESSAGE, { status: response.status });
   }
 
   return payload;
