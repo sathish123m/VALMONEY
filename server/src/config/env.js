@@ -24,6 +24,10 @@ const schema = z.object({
   MAIL_FROM: z.string().optional(),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(10),
+  AUTO_SEED: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -170,6 +170,7 @@ console instead of sending them, and password-reset codes appear as
 | `MAIL_FROM` | — | — | when empty, email is logged, not sent |
 | `UPLOAD_DIR` | — | `./uploads` | receipt storage; use a persistent disk in production |
 | `MAX_UPLOAD_MB` | — | `10` | per-file upload cap |
+| `AUTO_SEED` | — | `false` | on boot, create the demo account if the database has no users yet |
 
 ### `client/.env`
 
@@ -313,15 +314,19 @@ VITE_API_URL = https://<your-api-host>
 ```
 
 **API → Render.** `server/render.yaml` is a blueprint for a Node web service plus a
-Postgres instance (the service is named `valmoney-backend` to match the `VITE_API_URL`
-the Vercel project already uses — rename it and update the variable if the name is
-taken). Render defaults to a `render.yaml` at the repository root, so set
-**Blueprint Path** to `server/render.yaml` when creating it. Manual setup is
-equivalent: root directory `server`, build
+Postgres instance, both on the **Free** plan (the service is named `valmoney-backend`
+to match the `VITE_API_URL` the Vercel project already uses — rename it and update the
+variable if the name is taken). Render defaults to a `render.yaml` at the repository
+root, so set **Blueprint Path** to `server/render.yaml` when creating it. The deploy
+runs `prisma migrate deploy` and, because free instances have no shell to run
+`db:seed`, the server seeds the demo account itself on first boot
+(`AUTO_SEED=true`, and only while the database has no accounts).
+
+Manual setup is equivalent: root directory `server`, build
 `npm ci`, start `npm run db:deploy && npm start`, health check `/api/health`. Required
 environment variables: `NODE_ENV=production`, `DATABASE_URL` (Render/Neon/Supabase,
 `?sslmode=require`), `JWT_SECRET`, `CLIENT_ORIGIN` (your Vercel URL, plus any preview
-domains you use), and the `MAIL_*` group for real email.
+domains you use), and optionally the `MAIL_*` group for real email.
 
 Receipts are written to `UPLOAD_DIR`; on Render attach a persistent disk and point
 `UPLOAD_DIR` at it, otherwise uploads disappear on redeploy.
@@ -339,6 +344,7 @@ method but comes with limits worth knowing before you demo the app
 | --- | --- |
 | Spins down after 15 minutes idle, ~1 minute to wake | The web client warms the API as the sign-in page loads and, if a request still lands during a cold start, says the API is starting up rather than hanging. |
 | Outbound SMTP (ports 25/465/587) is blocked | Leave `MAIL_*` unset: verification and reset codes are written to the service logs as `[mail:dev] … code=123456`. The flows still work end to end. |
+| No shell access | `AUTO_SEED=true` seeds the demo account on first boot instead of `npm run db:seed` needing a shell (or a paid instance). |
 | Free Postgres expires 30 days after creation | For a database with no expiry, create a free [Neon](https://neon.com) project and put its connection string in `DATABASE_URL`. |
 | Ephemeral filesystem | Uploaded receipts are lost when the service restarts. Attach the disk in `server/render.yaml` on a paid instance to keep them. |
 | 750 free instance hours per month | A service that never sleeps would use roughly all of them, so avoid uptime keep-alive pings. |

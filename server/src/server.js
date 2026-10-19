@@ -4,11 +4,24 @@ const { createApp } = require('./app');
 const { env } = require('./config/env');
 const { prisma } = require('./lib/prisma');
 const { verifyTransport } = require('./lib/mailer');
+const { seedDemo } = require('./services/demoSeed');
 
 async function main() {
   // Fail fast with a clear message if the database is unreachable, rather than
   // accepting traffic and throwing on the first query.
   await prisma.$connect();
+
+  // Hosts without shell access (Render's free plan) cannot run the seed script,
+  // so a fresh deployment can seed itself — but only when the database has no
+  // accounts yet, and never fatally.
+  if (env.AUTO_SEED) {
+    try {
+      const result = await seedDemo({ onlyIfEmpty: true });
+      if (!result.seeded) console.log(`ℹ Demo seed skipped — ${result.reason}.`);
+    } catch (error) {
+      console.warn(`⚠  Demo seed failed: ${error.message}`);
+    }
+  }
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

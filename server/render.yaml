@@ -72,6 +72,11 @@ services:
       # across deploys; on Free they are lost when the service restarts.
       - key: MAX_UPLOAD_MB
         value: "10"
+      # Free instances have no shell, so the server seeds the demo account
+      # (demo@valmoney.app / Demo1234) on first boot — and only while the
+      # database has no accounts yet.
+      - key: AUTO_SEED
+        value: "true"
       # Email is optional. Free instances cannot open an SMTP connection, so
       # these stay unset and every code is written to the service logs as
       # `[mail:dev] … code=123456`. Add them on a paid instance to send mail:
