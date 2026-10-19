@@ -323,7 +323,10 @@ runs `prisma migrate deploy` and, because free instances have no shell to run
 (`AUTO_SEED=true`, and only while the database has no accounts).
 
 Manual setup is equivalent: root directory `server`, build
-`npm ci`, start `npm run db:deploy && npm start`, health check `/api/health`. Required
+`npm ci`, start `npm run db:deploy && npm start`, health check `/api/health`. The
+`prisma` CLI is a runtime dependency on purpose: hosts that build with
+`NODE_ENV=production` skip devDependencies, and both the `postinstall` generate step and
+the migration command need it. Required
 environment variables: `NODE_ENV=production`, `DATABASE_URL` (Render/Neon/Supabase,
 `?sslmode=require`), `JWT_SECRET`, `CLIENT_ORIGIN` (your Vercel URL, plus any preview
 domains you use), and optionally the `MAIL_*` group for real email.

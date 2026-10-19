@@ -42,7 +42,8 @@ services:
     # `npm ci` also runs `prisma generate` through postinstall.
     buildCommand: npm ci
     # Migrations are applied on every deploy; `prisma migrate deploy` is
-    # idempotent and never drops data.
+    # idempotent and never drops data. They live in the start command because
+    # Render's separate pre-deploy command is paid-plan only.
     startCommand: npm run db:deploy && npm start
     healthCheckPath: /api/health
     autoDeploy: true
