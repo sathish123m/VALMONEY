@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: valmoney-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: valmoney
+      POSTGRES_PASSWORD: valmoney
+      POSTGRES_DB: valmoney
+    ports:
+      # 5433 on purpose: avoids clashing with a local Postgres on the default port.
+      - "5433:5432"
+    volumes:
+      - valmoney-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valmoney -d valmoney"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  studio:
+    image: adminer:latest
+    container_name: valmoney-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  valmoney-pgdata:

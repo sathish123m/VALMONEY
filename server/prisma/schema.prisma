@@ -1,0 +1,137 @@
+// VALMONEY — data model
+// All monetary values are stored as integer cents to avoid floating point drift.
+// Interest rates are stored in basis points (1 bp = 0.01%), e.g. 1999 -> 19.99% APR.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // The connection URL lives in prisma.config.ts (CLI) and in the driver
+  // adapter (runtime) — Prisma 7 no longer reads it from this file.
+}
+
+enum DebtType {
+  CREDIT_CARD
+  STUDENT_LOAN
+  AUTO_LOAN
+  MORTGAGE
+  PERSONAL_LOAN
+  MEDICAL
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  PAYMENT
+}
+
+enum TransactionStatus {
+  COMPLETED
+  PENDING
+}
+
+enum ReceiptStatus {
+  PROCESSING
+  EXTRACTED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  username     String
+  passwordHash String
+  mobile       String?
+  currency     String   @default("USD")
+
+  /// Extra amount the user can put toward debt every month, in cents.
+  extraMonthlyPaymentCents Int @default(0)
+
+  emailVerified       Boolean   @default(false)
+  otpHash             String?
+  otpExpiresAt        DateTime?
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  debts        Debt[]
+  transactions Transaction[]
+  receipts     Receipt[]
+
+  @@map("users")
+}
+
+model Debt {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name             String
+  type             DebtType @default(OTHER)
+  balanceCents     Int
+  aprBps           Int
+  minPaymentCents  Int
+  /// Optional credit limit, used for utilisation planning on revolving accounts.
+  creditLimitCents Int?
+  dueDay           Int?
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("debts")
+}
+
+model Transaction {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  debtId String? @db.Uuid
+  debt   Debt?   @relation(fields: [debtId], references: [id], onDelete: SetNull)
+
+  description String
+  /// Signed: negative = money out, positive = money in.
+  amountCents Int
+  category    String
+  type        TransactionType   @default(EXPENSE)
+  status      TransactionStatus @default(COMPLETED)
+  occurredAt  DateTime          @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, occurredAt])
+  @@index([userId, category])
+  @@map("transactions")
+}
+
+model Receipt {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  originalName  String
+  storedName    String
+  mimeType      String
+  sizeBytes     Int
+  status        ReceiptStatus @default(PROCESSING)
+  vendor        String?
+  totalCents    Int?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("receipts")
+}

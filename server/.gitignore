@@ -1,2 +1,19 @@
-server/.env
 node_modules/
+.env
+.env.local
+.env.*.local
+
+# Uploaded receipts (contents are user data, never committed)
+uploads/
+!uploads/.gitkeep
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Logs / OS noise
+*.log
+npm-debug.log*
+.DS_Store
+coverage/
+dist/

@@ -1,13 +1,27 @@
-# Dependencies (Too heavy for Git)
+# Dependencies
 node_modules/
-client/node_modules/
-server/node_modules/
 
-# Secrets (Security Risk - Never upload these)
+# Secrets — never commit real values. `.env.example` files are the templates.
 .env
 .env.local
-.DS_Store
+.env.*.local
+server/.env
+client/.env
+!.env.example
 
-# Build Outputs
+# Build output
 dist/
 build/
+coverage/
+
+# Runtime data (user uploads, local databases)
+server/uploads/
+prisma/*.db
+
+# Tooling / OS noise
+.vercel
+.idea/
+.vscode/
+.DS_Store
+*.log
+npm-debug.log*

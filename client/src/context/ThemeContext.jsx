@@ -1,28 +1,49 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-const ThemeContext = createContext();
+const THEME_KEY = 'valmoney:theme';
+const ThemeContext = createContext(null);
 
-export const ThemeProvider = ({ children }) => {
-  const [isDark, setIsDark] = useState(localStorage.getItem('theme') === 'dark');
+const systemPrefersDark = () =>
+  typeof window === 'undefined' ? true : !window.matchMedia('(prefers-color-scheme: light)').matches;
+
+export function ThemeProvider({ children }) {
+  const [isDark, setIsDark] = useState(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    // Dark is the product default; an explicit choice always wins.
+    return stored ? stored === 'dark' : systemPrefersDark();
+  });
 
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (isDark) {
-      root.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      root.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    document.documentElement.classList.toggle('dark', isDark);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isDark ? '#05070f' : '#f6f7fb');
   }, [isDark]);
 
-  const toggleTheme = () => setIsDark(!isDark);
+  useEffect(() => {
+    // Follow the OS while the user has not made an explicit choice.
+    if (localStorage.getItem(THEME_KEY)) return undefined;
 
-  return (
-    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-};
+    const media = window.matchMedia('(prefers-color-scheme: light)');
+    const handler = (event) => setIsDark(!event.matches);
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }, []);
 
-export const useTheme = () => useContext(ThemeContext);
+  const toggleTheme = useCallback(() => {
+    setIsDark((current) => {
+      localStorage.setItem(THEME_KEY, current ? 'light' : 'dark');
+      return !current;
+    });
+  }, []);
+
+  const value = useMemo(() => ({ isDark, toggleTheme, setDark: setIsDark }), [isDark, toggleTheme]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) throw new Error('useTheme must be used inside <ThemeProvider>');
+  return context;
+}

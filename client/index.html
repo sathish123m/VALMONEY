@@ -1,1 +1,52 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>VALMONEY</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#05070f" />
+
+    <title>VALMONEY — Debt Payoff Planner</title>
+    <meta
+      name="description"
+      content="VALMONEY turns your debts into a dated plan. Compare avalanche vs snowball strategies, see the interest you save, and track the payoff month by month."
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="VALMONEY — Debt Payoff Planner" />
+    <meta
+      property="og:description"
+      content="Compare avalanche and snowball payoff strategies, see your debt-free date, and track every account to zero."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/logo.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    />
+
+    <script>
+      // Applied before first paint so a dark-mode user never sees a white flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem('valmoney:theme');
+          // Dark is the brand default; users whose OS asks for light get light
+          // unless they have picked a theme here before.
+          var prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+          var dark = stored ? stored === 'dark' : !prefersLight;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {
+          /* private mode — the default class on <html> stands */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
