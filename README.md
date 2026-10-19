@@ -315,7 +315,9 @@ VITE_API_URL = https://<your-api-host>
 **API → Render.** `server/render.yaml` is a blueprint for a Node web service plus a
 Postgres instance (the service is named `valmoney-backend` to match the `VITE_API_URL`
 the Vercel project already uses — rename it and update the variable if the name is
-taken). Manual setup is equivalent: root directory `server`, build
+taken). Render defaults to a `render.yaml` at the repository root, so set
+**Blueprint Path** to `server/render.yaml` when creating it. Manual setup is
+equivalent: root directory `server`, build
 `npm ci`, start `npm run db:deploy && npm start`, health check `/api/health`. Required
 environment variables: `NODE_ENV=production`, `DATABASE_URL` (Render/Neon/Supabase,
 `?sslmode=require`), `JWT_SECRET`, `CLIENT_ORIGIN` (your Vercel URL, plus any preview
