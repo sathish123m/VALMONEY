@@ -38,7 +38,47 @@ export function configureApi({ tokenProvider, unauthorizedHandler } = {}) {
   if (unauthorizedHandler) onUnauthorized = unauthorizedHandler;
 }
 
-async function request(path, { method = 'GET', body, signal, headers = {}, isForm = false } = {}) {
+/**
+ * How long to wait before giving up on a request.
+ *
+ * A dead host does not refuse a connection — it accepts it and never answers —
+ * which without a deadline leaves the UI spinning forever. The values are
+ * generous on purpose: a hosted free-tier API can take the best part of a
+ * minute to wake from sleep, and an upload has to fit down a phone connection.
+ */
+const REQUEST_TIMEOUT_MS = 45_000;
+const UPLOAD_TIMEOUT_MS = 90_000;
+
+/**
+ * Combine an optional caller signal with our own deadline. `AbortSignal.any`
+ * would be tidier but is too new to rely on across the browsers this app
+ * supports, so the two are wired together by hand.
+ */
+function deadline(signal, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException(`No response within ${timeoutMs / 1000}s`, 'TimeoutError'));
+  }, timeoutMs);
+
+  const forward = () => controller.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) forward();
+    else signal.addEventListener('abort', forward, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', forward);
+    },
+  };
+}
+
+async function request(
+  path,
+  { method = 'GET', body, signal, headers = {}, isForm = false, timeoutMs = REQUEST_TIMEOUT_MS } = {},
+) {
   const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
   const token = getToken();
 
@@ -49,20 +89,31 @@ async function request(path, { method = 'GET', body, signal, headers = {}, isFor
     ...headers,
   };
 
+  const attempt = deadline(signal, timeoutMs);
   let response;
   try {
     response = await fetch(url, {
       method,
       headers: finalHeaders,
-      signal,
+      signal: attempt.signal,
       ...(body === undefined ? {} : { body: isForm ? body : JSON.stringify(body) }),
     });
   } catch (error) {
-    if (error.name === 'AbortError') throw error;
+    // The caller cancelled (unmounted component, superseded request) — let the
+    // code that owns the signal decide what to do with it.
+    if (signal?.aborted || error?.name === 'AbortError') throw error;
+    if (error?.name === 'TimeoutError') {
+      throw new ApiError(
+        `The VALMONEY API at ${API_BASE} did not respond within ${Math.round(timeoutMs / 1000)}s. Please try again.`,
+        { status: 0, cause: error },
+      );
+    }
     throw new ApiError(
       `Cannot reach the VALMONEY API at ${API_BASE}. Is the server running?`,
       { status: 0, cause: error },
     );
+  } finally {
+    attempt.cleanup();
   }
 
   if (response.status === 204) return null;
@@ -94,7 +145,8 @@ export const api = {
   patch: (path, body, options) => request(path, { ...options, method: 'PATCH', body }),
   put: (path, body, options) => request(path, { ...options, method: 'PUT', body }),
   delete: (path, body, options) => request(path, { ...options, method: 'DELETE', body }),
-  upload: (path, formData, options) => request(path, { ...options, method: 'POST', body: formData, isForm: true }),
+  upload: (path, formData, options) =>
+    request(path, { ...options, method: 'POST', body: formData, isForm: true, timeoutMs: UPLOAD_TIMEOUT_MS }),
 };
 
 /** Build a query string, dropping empty values. */
@@ -115,9 +167,24 @@ export function query(params = {}) {
  */
 export async function downloadFile(path, fallbackName = 'download') {
   const token = getToken();
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const attempt = deadline(undefined, REQUEST_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: attempt.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'TimeoutError') {
+      throw new ApiError(`The export took longer than ${REQUEST_TIMEOUT_MS / 1000}s. Please try again.`, {
+        status: 0,
+        cause: error,
+      });
+    }
+    throw new ApiError('The export could not be generated — the API is unreachable.', { status: 0, cause: error });
+  } finally {
+    attempt.cleanup();
+  }
 
   if (!response.ok) {
     throw new ApiError('That export could not be generated.', { status: response.status });
