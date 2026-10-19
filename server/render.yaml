@@ -16,7 +16,11 @@ databases:
 
 services:
   - type: web
-    name: valmoney-api
+    # Named to match the VITE_API_URL already configured on the Vercel
+    # project (https://valmoney-backend.onrender.com), so the deployed client
+    # reaches this service without any environment change. Rename it and update
+    # VITE_API_URL if the name is taken.
+    name: valmoney-backend
     runtime: node
     region: oregon
     rootDir: server
