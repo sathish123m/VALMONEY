@@ -13,6 +13,11 @@ const schema = z.object({
     .min(32, 'JWT_SECRET must be at least 32 characters — generate one with `node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64url\'))"`'),
   JWT_EXPIRES_IN: z.string().default('7d'),
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
+  // Outbound email: an HTTPS API (`resend` | `sendgrid` | `brevo`) works on
+  // hosts that block SMTP ports, such as Render's free plan. SMTP stays
+  // supported for self-hosted setups and local Mailhog-style catchers.
+  MAIL_PROVIDER: z.enum(['smtp', 'resend', 'sendgrid', 'brevo']).optional(),
+  MAIL_API_KEY: z.string().optional(),
   MAIL_HOST: z.string().optional(),
   MAIL_PORT: z.coerce.number().int().positive().default(587),
   MAIL_SECURE: z
@@ -45,10 +50,25 @@ const env = parsed.data;
 env.isProduction = env.NODE_ENV === 'production';
 env.isTest = env.NODE_ENV === 'test';
 env.clientOrigins = env.CLIENT_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
-env.mailEnabled = Boolean(env.MAIL_FROM && env.MAIL_HOST && env.MAIL_USER && env.MAIL_PASS);
+const apiProvider = ['resend', 'sendgrid', 'brevo'].includes(env.MAIL_PROVIDER) ? env.MAIL_PROVIDER : null;
+const smtpReady = Boolean(env.MAIL_HOST && env.MAIL_USER && env.MAIL_PASS);
+
+if (apiProvider && env.MAIL_API_KEY && env.MAIL_FROM) {
+  env.mailProvider = apiProvider;
+} else if (apiProvider) {
+  env.mailProvider = 'log';
+  const missing = [!env.MAIL_API_KEY && 'MAIL_API_KEY', !env.MAIL_FROM && 'MAIL_FROM'].filter(Boolean);
+  console.warn(`⚠  ${env.MAIL_PROVIDER} is selected but ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} unset — email will only be logged.`);
+} else if (smtpReady && env.MAIL_FROM) {
+  env.mailProvider = 'smtp';
+} else {
+  env.mailProvider = 'log';
+}
+env.mailEnabled = env.mailProvider !== 'log';
 
 if (env.isProduction && !env.mailEnabled) {
-  console.warn('⚠  SMTP is not configured — verification and reset emails will only be logged.');
+  console.warn('⚠  Email is not configured — verification and reset codes will only be logged.');
+  console.warn('   Free hosts block SMTP ports; set MAIL_PROVIDER/MAIL_API_KEY/MAIL_FROM to send over HTTPS.');
 }
 
 module.exports = { env };

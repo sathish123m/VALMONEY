@@ -163,11 +163,13 @@ console instead of sending them, and password-reset codes appear as
 | `JWT_SECRET` | ✅ | — | ≥ 32 characters; the API refuses to boot otherwise |
 | `JWT_EXPIRES_IN` | — | `7d` | any `ms`-style duration |
 | `CLIENT_ORIGIN` | — | `http://localhost:5173` | comma-separated CORS allow-list |
-| `MAIL_HOST` | — | — | e.g. `smtp.gmail.com` |
+| `MAIL_PROVIDER` | — | — | `resend` \| `sendgrid` \| `brevo` \| `smtp` — how email is sent |
+| `MAIL_API_KEY` | — | — | API key for the chosen HTTPS provider |
+| `MAIL_HOST` | — | — | SMTP alternative: e.g. `smtp.gmail.com` |
 | `MAIL_PORT` | — | `587` | `465` switches to implicit TLS automatically |
 | `MAIL_SECURE` | — | `false` | |
 | `MAIL_USER` / `MAIL_PASS` | — | — | SMTP credentials (Gmail needs an app password) |
-| `MAIL_FROM` | — | — | when empty, email is logged, not sent |
+| `MAIL_FROM` | — | — | sender address; when empty, email is logged, not sent |
 | `UPLOAD_DIR` | — | `./uploads` | receipt storage; use a persistent disk in production |
 | `MAX_UPLOAD_MB` | — | `10` | per-file upload cap |
 | `AUTO_SEED` | — | `false` | on boot, create the demo account if the database has no users yet |
@@ -313,21 +315,22 @@ environment variable in the project:
 VITE_API_URL = https://<your-api-host>
 ```
 
-**API → Render.** `server/render.yaml` is a blueprint for a Node web service plus a
-Postgres instance, both on the **Free** plan (the service is named `valmoney-backend`
-to match the `VITE_API_URL` the Vercel project already uses — rename it and update the
-variable if the name is taken). Render defaults to a `render.yaml` at the repository
-root, so set **Blueprint Path** to `server/render.yaml` when creating it. The deploy
-runs `prisma migrate deploy` and, because free instances have no shell to run
-`db:seed`, the server seeds the demo account itself on first boot
-(`AUTO_SEED=true`, and only while the database has no accounts).
+**API → Render.** `server/render.yaml` is a blueprint for the Node web service on the
+**Free** plan (the service is named `valmoney-backend` to match the `VITE_API_URL` the
+Vercel project already uses — rename it and update the variable if the name is taken).
+Render defaults to a `render.yaml` at the repository root, so set **Blueprint Path** to
+`server/render.yaml` when creating it. The blueprint asks for `DATABASE_URL`; a free
+[Neon](https://neon.com) project is the recommended source because it does not expire.
+The deploy runs `prisma migrate deploy` and, because free instances have no shell to run
+`db:seed`, the server seeds the demo account itself on first boot (`AUTO_SEED=true`, and
+only while the database has no accounts).
 
 Manual setup is equivalent: root directory `server`, build
 `npm ci`, start `npm run db:deploy && npm start`, health check `/api/health`. The
 `prisma` CLI is a runtime dependency on purpose: hosts that build with
 `NODE_ENV=production` skip devDependencies, and both the `postinstall` generate step and
 the migration command need it. Required
-environment variables: `NODE_ENV=production`, `DATABASE_URL` (Render/Neon/Supabase,
+environment variables: `NODE_ENV=production`, `DATABASE_URL` (Neon/Supabase/Render,
 `?sslmode=require`), `JWT_SECRET`, `CLIENT_ORIGIN` (your Vercel URL, plus any preview
 domains you use), and optionally the `MAIL_*` group for real email.
 
@@ -337,18 +340,39 @@ Receipts are written to `UPLOAD_DIR`; on Render attach a persistent disk and poi
 Any Postgres works: create the database, run `npm run db:deploy`, and the schema is in
 `server/prisma/migrations/`.
 
+### Email on a host that blocks SMTP
+
+Free Render instances cannot open ports 25/465/587, so the API sends over HTTPS instead.
+Pick one provider, add its key in Render's **Environment** tab, and email works with no
+domain of your own:
+
+| `MAIL_PROVIDER` | Free allowance | Sender you can use |
+| --- | --- | --- |
+| `brevo` | 300/day | any address you verify once by email code |
+| `resend` | 3,000/month | `onboarding@resend.dev` — but it only delivers to the address on your Resend account until you verify a domain |
+| `sendgrid` | 100/day | any address you verify with Single Sender Verification |
+
+```bash
+MAIL_PROVIDER=brevo
+MAIL_API_KEY=xkeysib-…
+MAIL_FROM=VALMONEY <no-reply@your-verified-address.com>
+```
+
+The API probes the key once at boot and logs `✅ brevo API key accepted — sending as …`;
+a wrong key is reported in the logs without stopping the service. With none of this set,
+codes are printed to the logs as `[mail:dev] … code=123456` and every flow still works.
+
 ### Free-hosting caveats
 
-The blueprint deploys both resources on Render's **Free** plan, which needs no payment
-method but comes with limits worth knowing before you demo the app
-([Render's list](https://render.com/docs/free)):
+The API service runs on Render's **Free** plan, which needs no payment method but comes
+with limits worth knowing before you demo the app ([Render's list](https://render.com/docs/free)):
 
 | Limit | What it means here |
 | --- | --- |
 | Spins down after 15 minutes idle, ~1 minute to wake | The web client warms the API as the sign-in page loads and, if a request still lands during a cold start, says the API is starting up rather than hanging. |
-| Outbound SMTP (ports 25/465/587) is blocked | Leave `MAIL_*` unset: verification and reset codes are written to the service logs as `[mail:dev] … code=123456`. The flows still work end to end. |
+| Outbound SMTP (ports 25/465/587) is blocked | Send through an HTTPS API instead (`MAIL_PROVIDER` = `resend`, `sendgrid` or `brevo`), which is supported out of the box. Left unset, codes are written to the service logs as `[mail:dev] … code=123456`. |
 | No shell access | `AUTO_SEED=true` seeds the demo account on first boot instead of `npm run db:seed` needing a shell (or a paid instance). |
-| Free Postgres expires 30 days after creation | For a database with no expiry, create a free [Neon](https://neon.com) project and put its connection string in `DATABASE_URL`. |
+| Render's free Postgres expires 30 days after creation | Use a free [Neon](https://neon.com) project instead — it has no expiry. Paste its connection string into `DATABASE_URL`. |
 | Ephemeral filesystem | Uploaded receipts are lost when the service restarts. Attach the disk in `server/render.yaml` on a paid instance to keep them. |
 | 750 free instance hours per month | A service that never sleeps would use roughly all of them, so avoid uptime keep-alive pings. |
 

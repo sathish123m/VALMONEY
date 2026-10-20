@@ -1,19 +1,79 @@
 'use strict';
 
 /**
- * SMTP transport + transactional email templates.
+ * Transactional email — HTTPS APIs first, SMTP as a fallback — plus the
+ * templates every message shares.
  *
- * Delivery is deliberately best-effort: if SMTP is not configured (or the
+ * Delivery is deliberately best-effort: if email is not configured (or the
  * provider is briefly down) the API logs the message instead of failing the
  * request. Losing a "welcome" email must never block a signup.
+ *
+ * Why APIs are the default in production: hosts such as Render's free plan
+ * block outbound SMTP (ports 25/465/587) but allow HTTPS. A single POST to
+ * Resend, SendGrid or Brevo delivers the same message with no ports to unblock.
  */
 
 const nodemailer = require('nodemailer');
 const { env } = require('../config/env');
 
+const SEND_TIMEOUT_MS = 15_000;
+
+/**
+ * Split a `Name <address@example.com>` sender into parts.
+ * Resend accepts the raw form; Brevo and SendGrid want name and address apart.
+ */
+function parseFrom(from = '') {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from);
+  if (match) return { email: match[2].trim(), name: match[1] || undefined };
+  return { email: from.trim() };
+}
+
+/** Provider request shapes — one entry per supported HTTPS API. */
+const apiProviders = {
+  resend: {
+    url: 'https://api.resend.com/emails',
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
+    body: ({ from, to, subject, text, html }) => ({ from, to: [to], subject, text, html }),
+  },
+  sendgrid: {
+    url: 'https://api.sendgrid.com/v3/mail/send',
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }),
+    body: ({ from, to, subject, text, html }) => ({
+      personalizations: [{ to: [{ email: to }] }],
+      from: parseFrom(from),
+      subject,
+      content: [
+        { type: 'text/plain', value: text },
+        { type: 'text/html', value: html },
+      ],
+    }),
+  },
+  brevo: {
+    url: 'https://api.brevo.com/v3/smtp/email',
+    headers: (key) => ({ 'api-key': key, 'Content-Type': 'application/json' }),
+    body: ({ from, to, subject, text, html }) => ({
+      sender: parseFrom(from),
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  },
+};
+
+/**
+ * Build the exact HTTP request for one provider. Kept separate from sending so
+ * the request shapes are unit-testable without touching the network.
+ */
+function buildApiRequest(provider, message, apiKey = env.MAIL_API_KEY) {
+  const spec = apiProviders[provider];
+  if (!spec) throw new Error(`Unknown mail provider "${provider}"`);
+  return { url: spec.url, headers: spec.headers(apiKey), body: spec.body(message) };
+}
+
 let transporter = null;
 
-if (env.mailEnabled) {
+if (env.mailProvider === 'smtp') {
   transporter = nodemailer.createTransport({
     host: env.MAIL_HOST,
     port: env.MAIL_PORT,
@@ -105,6 +165,45 @@ const templates = {
   }),
 };
 
+/** POST one message to an HTTPS provider API. Never throws. */
+async function sendViaApi(message) {
+  const provider = env.mailProvider;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
+
+  try {
+    const request = buildApiRequest(provider, message);
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+      signal: controller.signal,
+    });
+
+    const raw = await response.text();
+
+    if (!response.ok) {
+      // Provider errors name the exact problem (unverified sender, bad key…),
+      // so keep enough of the body to be useful in the logs.
+      return { delivered: false, reason: `${provider} responded ${response.status}: ${raw.slice(0, 200)}` };
+    }
+
+    let messageId = response.headers.get('x-message-id') ?? undefined;
+    try {
+      const parsed = raw ? JSON.parse(raw) : null;
+      messageId = parsed?.id ?? parsed?.messageId ?? messageId;
+    } catch {
+      // Some providers answer 202 with an empty body; the header is enough.
+    }
+    return { delivered: true, messageId };
+  } catch (error) {
+    const reason = error.name === 'AbortError' ? `${provider} timed out after ${SEND_TIMEOUT_MS / 1000}s` : error.message;
+    return { delivered: false, reason };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Send a templated email.
  * @returns {Promise<{delivered:boolean, reason?:string, messageId?:string}>}
@@ -115,31 +214,81 @@ async function sendTemplate(name, to, data = {}) {
 
   const { subject, text, html } = template(data);
 
-  if (!transporter) {
+  if (env.mailProvider === 'log') {
     console.log(`[mail:dev] to=${to} subject="${subject}"${data.code ? ` code=${data.code}` : ''}`);
-    return { delivered: false, reason: 'smtp-not-configured' };
+    return { delivered: false, reason: 'mail-not-configured' };
   }
 
-  try {
-    const info = await transporter.sendMail({ from: env.MAIL_FROM, to, subject, text, html });
-    return { delivered: true, messageId: info.messageId };
-  } catch (error) {
-    console.error(`[mail] failed to deliver "${subject}" to ${to}: ${error.message}`);
-    return { delivered: false, reason: error.message };
+  const message = { from: env.MAIL_FROM, to, subject, text, html };
+
+  let result;
+  if (env.mailProvider === 'smtp') {
+    try {
+      const info = await transporter.sendMail(message);
+      result = { delivered: true, messageId: info.messageId };
+    } catch (error) {
+      result = { delivered: false, reason: error.message };
+    }
+  } else {
+    result = await sendViaApi(message);
   }
+
+  if (!result.delivered) {
+    console.error(`[mail] failed to deliver "${subject}" to ${to}: ${result.reason}`);
+  }
+  return result;
 }
 
-/** Verify SMTP credentials at boot (never fatal). */
+/** Cheap authenticated GET per provider, used once at boot as a smoke test. */
+const verifyProbes = {
+  resend: { url: 'https://api.resend.com/domains', headers: (key) => ({ Authorization: `Bearer ${key}` }) },
+  brevo: { url: 'https://api.brevo.com/v3/account', headers: (key) => ({ 'api-key': key }) },
+};
+
+/**
+ * Verify the mail configuration at boot (never fatal, never blocking).
+ * SendGrid keys are often scoped to mail-send only, so its key is not probed.
+ */
 async function verifyTransport() {
-  if (!transporter) return false;
-  try {
-    await transporter.verify();
-    console.log('✅ SMTP transport verified');
+  if (env.mailProvider === 'log') return false;
+
+  if (env.mailProvider === 'smtp') {
+    try {
+      await transporter.verify();
+      console.log('✅ SMTP transport verified');
+      return true;
+    } catch (error) {
+      console.warn(`⚠  SMTP transport not usable: ${error.message}`);
+      return false;
+    }
+  }
+
+  const probe = verifyProbes[env.mailProvider];
+  const sender = env.MAIL_FROM;
+
+  if (!probe) {
+    console.log(`✅ ${env.mailProvider} configured — sending as ${sender}`);
     return true;
-  } catch (error) {
-    console.warn(`⚠  SMTP transport not usable: ${error.message}`);
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(probe.url, { headers: probe.headers(env.MAIL_API_KEY), signal: controller.signal });
+    if (response.ok) {
+      console.log(`✅ ${env.mailProvider} API key accepted — sending as ${sender}`);
+      return true;
+    }
+    const raw = await response.text();
+    console.warn(`⚠  ${env.mailProvider} rejected the API key (${response.status}): ${raw.slice(0, 200)}`);
     return false;
+  } catch (error) {
+    const reason = error.name === 'AbortError' ? 'timed out' : error.message;
+    console.warn(`⚠  could not reach ${env.mailProvider}: ${reason}`);
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-module.exports = { sendTemplate, verifyTransport, templates };
+module.exports = { sendTemplate, verifyTransport, templates, buildApiRequest, apiProviders };

@@ -21,12 +21,23 @@
 #
 # Deploying elsewhere (Railway, Fly, a VPS) needs the same three things:
 # the build command, the start command and the environment variables below.
-databases:
-  - name: valmoney-db
-    databaseName: valmoney
-    user: valmoney
-    region: oregon
-    plan: free
+#
+# Database: a free Neon project (https://neon.com) is the recommended default —
+# unlike Render's free Postgres it does not expire after 30 days. Create the
+# project, copy its connection string and paste it as DATABASE_URL when the
+# blueprint asks for it. To use Render Postgres instead, uncomment the
+# `databases:` block below and point DATABASE_URL at it with:
+#   - key: DATABASE_URL
+#     fromDatabase:
+#       name: valmoney-db
+#       property: connectionString
+#
+# databases:
+#   - name: valmoney-db
+#     databaseName: valmoney
+#     user: valmoney
+#     region: oregon
+#     plan: free
 
 services:
   - type: web
@@ -55,10 +66,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Free-instance friendly: Neon (https://neon.com) keeps working after
+      # Render's free Postgres expires, and any PostgreSQL string fits here.
+      # Add ?sslmode=require for hosted providers.
       - key: DATABASE_URL
-        fromDatabase:
-          name: valmoney-db
-          property: connectionString
+        sync: false
       # Render generates and stores a 64-character secret for us.
       - key: JWT_SECRET
         generateValue: true
@@ -79,9 +91,13 @@ services:
       - key: AUTO_SEED
         value: "true"
       # Email is optional. Free instances cannot open an SMTP connection, so
-      # these stay unset and every code is written to the service logs as
-      # `[mail:dev] … code=123456`. Add them on a paid instance to send mail:
-      # MAIL_HOST / MAIL_USER / MAIL_PASS / MAIL_FROM (+ MAIL_PORT=587).
+      # sending goes over HTTPS instead. Add these three env vars to switch it
+      # on (brevo | resend | sendgrid — see the README for the free limits):
+      #   MAIL_PROVIDER = brevo
+      #   MAIL_API_KEY  = <the provider API key>      (mark it as a secret)
+      #   MAIL_FROM     = VALMONEY <no-reply@your-domain.com>
+      # Left unset, every code is written to the service logs as
+      # `[mail:dev] … code=123456`.
     # Persistent disk — requires a paid instance type on Render.
     # disk:
     #   name: valmoney-uploads

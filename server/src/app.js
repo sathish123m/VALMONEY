@@ -63,7 +63,7 @@ function createApp() {
       status: 'ok',
       uptimeSeconds: Math.round(process.uptime()),
       environment: env.NODE_ENV,
-      mail: env.mailEnabled ? 'smtp' : 'log-only',
+      mail: env.mailEnabled ? env.mailProvider : 'log-only',
       time: new Date().toISOString(),
     });
   });
